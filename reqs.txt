@@ -1,0 +1,6 @@
+numpy==1.23.5
+opencv_contrib_python==4.8.0.76
+opencv_python==4.8.0.76
+opencv_python_headless==4.8.1.78
+tensorflow==2.14.0
+ultralytics==8.0.219
