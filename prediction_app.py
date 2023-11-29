@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk
 import cv2
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from PIL import Image, ImageTk
 import numpy as np
@@ -59,7 +58,7 @@ class PedestrianTrajectoryPredictor:
             )
             radio_button.grid(row=i + 2, column=0, sticky=tk.W, pady=5, padx=10)
 
-        self.predicting_model = "model_td_20lstm.h5"
+        self.predicting_model = "models/model_td_20lstm.h5"
         self.predictor = Predictor(self.predicting_model, self.cap)
         self.prediction = self.predictor.predict()
         self.colors = []
