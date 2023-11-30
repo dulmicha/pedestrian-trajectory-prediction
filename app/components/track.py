@@ -6,12 +6,13 @@ from ..components.utils import DistanceConverter
 
 
 class Tracker:
-    def __init__(self, cap):
+    def __init__(self, cap, draw_tracking_lines=True):
         self.model = YOLO("yolov8n.pt")
         self.cap = cap
         self.track_history = defaultdict(lambda: [])
         self.frames_list = defaultdict(lambda: [])
         self.stop = False
+        self.draw_tracking_lines = draw_tracking_lines
 
     def track(self):
         while self.cap.isOpened():
@@ -51,14 +52,15 @@ class Tracker:
                     )
 
                     # Draw the tracking lines
-                    points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
-                    cv2.polylines(
-                        annotated_frame,
-                        [points],
-                        isClosed=False,
-                        color=(230, 230, 230),
-                        thickness=10,
-                    )
+                    if self.draw_tracking_lines:
+                        points = np.hstack(track).astype(np.int32).reshape((-1, 1, 2))
+                        cv2.polylines(
+                            annotated_frame,
+                            [points],
+                            isClosed=False,
+                            color=(230, 230, 230),
+                            thickness=10,
+                        )
 
                     area = np.array([[[0, 151], [373, 151], [968, 555], [0, 555]]])
                     alpha = 0.1

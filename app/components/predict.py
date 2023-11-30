@@ -12,8 +12,9 @@ class Predictor:
         self.cap = cap
         self.track_history = defaultdict(lambda: [])
         self.area = np.array([[[0, 151], [383, 151], [978, 555], [0, 555]]])
-        self.tracker = Tracker(cap)
+        self.tracker = Tracker(cap, draw_tracking_lines=False)
         self.people_at_frame = defaultdict(lambda: {})
+        self.num_steps_to_predict = 19
 
     def predict(self):
         for frame_number, (frame, boxes, track_ids) in enumerate(self.tracker.track()):
@@ -32,10 +33,10 @@ class Predictor:
             if frame_number % 10 == 0:
                 predictions = {
                     person: self.model.predict(
-                        np.array(track[-19:]).reshape(1, 19, 2), verbose=0
+                        np.array(track[-self.num_steps_to_predict:]).reshape(1, self.num_steps_to_predict, 2), verbose=0
                     )[0]
                     for person, track in self.track_history.items()
-                    if len(track) > 19
+                    if len(track) > self.num_steps_to_predict
                 }
                 yield (
                     frame,
