@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import ttk
 import customtkinter as ctk
 import cv2
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -7,7 +6,10 @@ import matplotlib.pyplot as plt
 from PIL import Image, ImageTk
 import numpy as np
 from .components.predict import Predictor
+from .components.track import Tracker
 import time
+
+DEFAULT_VIDEO_PATH = "data/default_video.mp4"
 
 
 class PedestrianTrajectoryPredictionApp:
@@ -17,11 +19,18 @@ class PedestrianTrajectoryPredictionApp:
         self.root.resizable(False, False)
 
         # Variables for video and plotting
-        self.video_source = (
-            "data/default_video.mp4" if video_path is None else video_path
+        response = tk.messagebox.askyesno(
+            "Video selection", "Do you want to use default video?"
         )
+        if not response:
+            video_path = tk.filedialog.askopenfilename(
+                initialdir="data",
+                title="Select file",
+                filetypes=[("mp4 files", "*.mp4")],
+            )
+        self.video_source = DEFAULT_VIDEO_PATH if response else video_path
         self.cap = cv2.VideoCapture(self.video_source)
-        self.paused = False
+        self.predicting = False
         HEIGHT, WIDTH = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT), self.cap.get(
             cv2.CAP_PROP_FRAME_WIDTH
         )
@@ -54,10 +63,10 @@ class PedestrianTrajectoryPredictionApp:
         self.canvas.draw_idle()
 
         # Create buttons and radio buttons
-        self.pause_button = ctk.CTkButton(
-            root, text="Predict!", command=self.toggle_pause
+        self.predict_button = ctk.CTkButton(
+            root, text="Predict!", command=self.toggle_predict
         )
-        self.pause_button.grid(row=1, column=0, pady=10)
+        self.predict_button.grid(row=1, column=0, pady=10)
 
         options = ["Predict 1s", "Predict 3s", "Predict 5s"]
         self.selected_option = tk.StringVar(value=options[0])
@@ -71,21 +80,37 @@ class PedestrianTrajectoryPredictionApp:
 
         self.n_steps = int(self.selected_option.get().split()[1][0])
 
+        self.tracker = Tracker(self.cap, draw_tracking_lines=False)
+        self.track = self.tracker.track()
+
         self.predictor = Predictor(
             predicting_model_path
             if predicting_model_path
             else "models/model_td_100lstm.h5",
-            self.cap,
         )
-        self.prediction = self.predictor.predict()
         self.colors = []
 
         self.update()
 
+    def clear_plot(self):
+        self.ax.cla()
+        self.ax.imshow(
+            cv2.cvtColor(cv2.imread("data/bg.png"), cv2.COLOR_BGR2RGB),
+            extent=[0, 8.5, 0, 32],
+        )
+        self.ax.set_xlabel("x [m]")
+        self.ax.set_ylabel("y [m]")
+        self.ax.set_xticks(np.arange(0, 8.1, 1))
+        self.ax.set_yticks(
+            np.arange(0, 32.1, 1), labels=[None if i % 2 else i for i in range(33)]
+        )
+        self.ax.set_xlim(0, 8)
+        self.ax.set_ylim(32, 0)
+        self.ax.grid()
+
     def plot_people_on_plan(
         self,
         people,
-        i,
         predictions=None,
         plot_actual=True,
         plot_predictions=True,
@@ -97,20 +122,7 @@ class PedestrianTrajectoryPredictionApp:
             return self.colors.index(track_id)
 
         if clear:
-            self.ax.cla()
-            self.ax.imshow(
-                cv2.cvtColor(cv2.imread("data/bg.png"), cv2.COLOR_BGR2RGB),
-                extent=[0, 8.5, 0, 32],
-            )
-            self.ax.set_xlabel("x [m]")
-            self.ax.set_ylabel("y [m]")
-            self.ax.set_xticks(np.arange(0, 8.1, 1))
-            self.ax.set_yticks(
-                np.arange(0, 32.1, 1), labels=[None if i % 2 else i for i in range(33)]
-            )
-            self.ax.set_xlim(0, 8)
-            self.ax.set_ylim(32, 0)
-            self.ax.grid()
+            self.clear_plot()
 
         if people is not None:
             for track_id, (x, y) in people.items():
@@ -127,7 +139,7 @@ class PedestrianTrajectoryPredictionApp:
                     and predictions is not None
                     and track_id in predictions
                 ):
-                    (self.predictions,) = plt.plot(
+                    plt.plot(
                         predictions[track_id][:10, 0],
                         predictions[track_id][:10, 1],
                         label=f"Person {track_id} prediction",
@@ -136,45 +148,46 @@ class PedestrianTrajectoryPredictionApp:
 
     def update(self):
         try:
-            if not self.paused:
-                frame, *people = next(self.prediction)
+            if not self.predicting:
+                frame, people, track_hist = next(self.track)
 
                 self.photo = self.convert_to_tk_image(frame)
                 self.video_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
 
-                self.plot_people_on_plan(*people, plot_predictions=False)
+                self.plot_people_on_plan(people, plot_predictions=False)
                 self.canvas.draw_idle()
-            else:
-                frame, *people = next(self.prediction)
+            elif self.iteration_counter > 0:
+                frame, people, track_hist = next(self.track)
                 self.stored_frames.append(frame)
 
-                self.plot_people_on_plan(*people, plot_actual=False, clear=False)
+                self.predictor.update(track_hist)
+                predictions = self.predictor.predict()
+
+                self.plot_people_on_plan(
+                    people, predictions, plot_actual=False, clear=False
+                )
                 self.canvas.draw_idle()
 
-                if self.iteration_counter == 0:
-                    for frame in self.stored_frames:
-                        self.photo = self.convert_to_tk_image(frame)
-                        self.video_canvas.create_image(
-                            0, 0, anchor=tk.NW, image=self.photo
-                        )
-
-                    self.plot_people_on_plan(
-                        *people, plot_predictions=False, clear=False
-                    )
-                    self.canvas.draw_idle()
-
-                    self.toggle_pause()
-
                 self.iteration_counter -= 1
+
+            else:
+                if self.stored_frames:
+                    frame = self.stored_frames.pop(0)
+                    self.photo = self.convert_to_tk_image(frame)
+                    self.video_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+                    self.canvas.draw_idle()
+                    time.sleep(0.1)
+                else:
+                    self.canvas.draw_idle()
+                    self.toggle_predict()
 
         except StopIteration:
             self.handle_stop_iteration()
             return
 
-        self.root.after(20, self.update)
+        self.root.after(50, self.update)
 
     def handle_stop_iteration(self):
-        self.predictor.tracker.stop = True
         self.cap.release()
         self.root.after_cancel(self.update)
         tk.messagebox.showinfo("Video ended", f"Video ended")
@@ -184,9 +197,9 @@ class PedestrianTrajectoryPredictionApp:
         img = Image.fromarray(frame_rgb)
         return ImageTk.PhotoImage(image=img)
 
-    def toggle_pause(self):
-        self.paused = not self.paused
-        self.iteration_counter = self.n_steps
+    def toggle_predict(self):
+        self.predicting = not self.predicting
+        self.iteration_counter = self.n_steps * 10 if self.predicting else 0
         self.stored_frames = []
 
     def handle_radio_button_change(self):
@@ -194,7 +207,6 @@ class PedestrianTrajectoryPredictionApp:
 
     def __del__(self):
         if hasattr(self, "cap"):
-            self.predictor.tracker.stop = True
             self.cap.release()
 
     def on_closing(self):
@@ -209,6 +221,6 @@ class PedestrianTrajectoryPredictionApp:
         ctk.set_appearance_mode("light")
         root = tk.Tk()
         app = PedestrianTrajectoryPredictionApp(root, video_path, predicting_model_path)
-        root.protocol("WM_DELETE_WINDOW", app.on_closing)
+        app.root.protocol("WM_DELETE_WINDOW", app.on_closing)
 
         root.mainloop()
