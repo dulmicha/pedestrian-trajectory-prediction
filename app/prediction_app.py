@@ -224,11 +224,11 @@ class PedestrianTrajectoryPredictionApp:
             self.paused = True
             self.root.quit()
 
-    @staticmethod
-    def run(predicting_model_path):
+    @classmethod
+    def run(cls, predicting_model_path):
         ctk.set_appearance_mode("light")
         root = tk.Tk()
-        app = PedestrianTrajectoryPredictionApp(root, predicting_model_path)
+        app = cls(root, predicting_model_path)
         app.root.protocol("WM_DELETE_WINDOW", app.on_closing)
 
         root.mainloop()
