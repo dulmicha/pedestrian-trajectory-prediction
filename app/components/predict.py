@@ -13,6 +13,11 @@ class Predictor:
     def update(self, track_history):
         self.track_history = track_history
 
+    def update_from_predictions(self, predictions):
+        for person, prediction in predictions.items():
+            position = (*prediction[-1],)
+            self.track_history[person].append(position)
+
     def predict(self):
         return {
             person: self.model.predict(

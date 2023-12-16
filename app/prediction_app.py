@@ -155,17 +155,19 @@ class PedestrianTrajectoryPredictionApp:
             if not self.predicting:
                 frame, people, track_hist = next(self.track)
 
+                self.predictor.update(track_hist)
+
                 self.photo = self.convert_to_tk_image(frame)
                 self.video_canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
 
                 self.plot_people_on_plan(people, plot_predictions=False)
                 self.canvas.draw_idle()
             elif self.iteration_counter > 0:
-                frame, people, track_hist = next(self.track)
+                frame, people, _ = next(self.track)
                 self.stored_frames.append(frame)
 
-                self.predictor.update(track_hist)
                 predictions = self.predictor.predict()
+                self.predictor.update_from_predictions(predictions)
 
                 self.plot_people_on_plan(
                     people, predictions, plot_actual=False, clear=False
