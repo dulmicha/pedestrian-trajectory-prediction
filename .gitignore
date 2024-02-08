@@ -153,4 +153,5 @@ cython_debug/
 yolov8x.pt
 yolov8n.pt
 
-data/
+data/extracted
+data/videos
